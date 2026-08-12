@@ -131,7 +131,7 @@ From Windows PowerShell:
 cd C:\path\to\CyberCube\windows
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Register-CyberCubeSpotifyTask.ps1 `
   -CubeIp "192.168.4.26" `
-  -WslDistro "Ubuntu-20.04" `
+  -WslDistro "Ubuntu-24.04" `
   -WslUser "your-wsl-user" `
   -SpotifyTokenPath "/home/your-wsl-user/.config/cybercube/spotify-token.json" `
   -IdlePath "/image/Starfield_1.gif"
@@ -140,6 +140,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Register-CyberCubeSpot
 Notes:
 
 - `-WslDistro` and `-WslUser` are optional. If omitted, Windows uses your default WSL distro and user.
+- Use the exact distro name shown by `wsl.exe -l -v`; an in-place Ubuntu upgrade may leave the WSL name older than the Ubuntu release inside it.
 - The task is created at `Task Scheduler Library\Startup\CyberCube Spotify`.
 - The registration script derives the Linux project path from the parent of the `windows` folder.
 - Re-running the registration command updates the existing task.
