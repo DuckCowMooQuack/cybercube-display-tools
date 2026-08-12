@@ -111,6 +111,7 @@ The scripts can also be configured with environment variables:
 ```bash
 export CYBERCUBE_IP=192.168.4.26
 export CYBERCUBE_SPOTIFY_INTERVAL=1
+export CYBERCUBE_SPOTIFY_OUTPUT="/tmp/cybercube_spotify.gif"
 export CYBERCUBE_SPOTIFY_TOKEN_PATH="$HOME/.config/cybercube/spotify-token.json"
 export CYBERCUBE_IDLE_PATH="/image/Starfield_1.gif"
 ```
@@ -143,6 +144,8 @@ Notes:
 - Use the exact distro name shown by `wsl.exe -l -v`; an in-place Ubuntu upgrade may leave the WSL name older than the Ubuntu release inside it.
 - The task is created at `Task Scheduler Library\Startup\CyberCube Spotify`.
 - The registration script derives the Linux project path from the parent of the `windows` folder.
+- By default, copied task launchers and the Windows log are kept in the project-local `.task\` folder.
+- The WSL process writes the generated Spotify GIF to `.task/cybercube_spotify.gif` under the Linux project path.
 - Re-running the registration command updates the existing task.
 
 Start it immediately:
@@ -162,8 +165,7 @@ Check status and logs:
 
 ```powershell
 Get-ScheduledTask -TaskPath "\Startup\" -TaskName "CyberCube Spotify" | Get-ScheduledTaskInfo
-Get-Content C:\ProgramData\CyberCubeSpotify\CyberCubeSpotifyWSL.log -Tail 50
-wsl.exe tail -n 50 /tmp/CyberCubeSpotifyWSL.log
+Get-Content ..\.task\CyberCubeSpotifyWSL.log -Tail 50
 ```
 
 Unregister the task:
@@ -201,8 +203,9 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Unregister-CyberCubeSp
 ```text
 -TaskName            Scheduled task name
 -TaskPath            Scheduled task folder, default \Startup\
--LauncherPath        Installed PowerShell launcher path
--HiddenLauncherPath  Installed VBScript hidden launcher path
+-TaskDataDir         Project-local copied launchers and Windows log directory, default ..\.task
+-LauncherPath        Installed PowerShell launcher path, default under -TaskDataDir
+-HiddenLauncherPath  Installed VBScript hidden launcher path, default under -TaskDataDir
 -LinuxProjectPath    Linux path to this project; auto-detected when possible
 -WslDistro           Optional WSL distro name
 -WslUser             Optional WSL user name

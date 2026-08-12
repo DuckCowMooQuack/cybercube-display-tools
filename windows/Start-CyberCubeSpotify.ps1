@@ -4,6 +4,7 @@ param(
     [string]$WslUser = "",
     [string]$CubeIp = "192.168.4.26",
     [int]$Interval = 1,
+    [string]$LogDir = "",
     [string]$SpotifyTokenPath = "",
     [string]$IdlePath = "/image/Starfield_1.gif"
 )
@@ -15,28 +16,33 @@ function ConvertTo-BashSingleQuoted {
     return "'" + ($Value -replace "'", "'\''") + "'"
 }
 
-$logDir = "C:\ProgramData\CyberCubeSpotify"
-New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+if (-not $LogDir) {
+    $LogDir = Split-Path -Parent $PSCommandPath
+}
+New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 
-$logPath = Join-Path $logDir "CyberCubeSpotifyWSL.log"
+$logPath = Join-Path $LogDir "CyberCubeSpotifyWSL.log"
 $wslExe = "C:\WINDOWS\System32\wsl.exe"
-$linuxLogPath = "/tmp/CyberCubeSpotifyWSL.log"
 
 if (-not $LinuxProjectPath) {
     throw "LinuxProjectPath is required. Register the task with Register-CyberCubeSpotifyTask.ps1."
 }
 
 $quotedLinuxProjectPath = ConvertTo-BashSingleQuoted $LinuxProjectPath
+$linuxTaskDataDir = "$LinuxProjectPath/.task"
+$linuxOutputPath = "$linuxTaskDataDir/cybercube_spotify.gif"
 $envAssignments = @(
     "CYBERCUBE_IP=$(ConvertTo-BashSingleQuoted $CubeIp)"
     "CYBERCUBE_SPOTIFY_INTERVAL=$(ConvertTo-BashSingleQuoted $($Interval.ToString()))"
     "CYBERCUBE_IDLE_PATH=$(ConvertTo-BashSingleQuoted $IdlePath)"
+    "CYBERCUBE_SPOTIFY_OUTPUT=$(ConvertTo-BashSingleQuoted $linuxOutputPath)"
 )
 if ($SpotifyTokenPath) {
     $envAssignments += "CYBERCUBE_SPOTIFY_TOKEN_PATH=$(ConvertTo-BashSingleQuoted $SpotifyTokenPath)"
 }
 $envCommand = $envAssignments -join " "
-$linuxCommand = "exec >> '$linuxLogPath' 2>&1; pkill -f '[c]ybercube_spotify.py' 2>/dev/null || true; cd $quotedLinuxProjectPath && $envCommand exec ./start_cybercube_spotify.sh"
+$quotedLinuxTaskDataDir = ConvertTo-BashSingleQuoted $linuxTaskDataDir
+$linuxCommand = "mkdir -p $quotedLinuxTaskDataDir; pkill -f '[c]ybercube_spotify.py' 2>/dev/null || true; cd $quotedLinuxProjectPath && $envCommand exec ./start_cybercube_spotify.sh"
 
 $argumentList = @()
 if ($WslDistro) {
@@ -53,7 +59,8 @@ Add-Content -Path $logPath -Value ("[{0}] Command: {1} {2}" -f $timestamp, $wslE
 Add-Content -Path $logPath -Value ("[{0}] Linux project path: {1}" -f $timestamp, $LinuxProjectPath)
 Add-Content -Path $logPath -Value ("[{0}] WSL distro: {1}" -f $timestamp, $(if ($WslDistro) { $WslDistro } else { "default" }))
 Add-Content -Path $logPath -Value ("[{0}] WSL user: {1}" -f $timestamp, $(if ($WslUser) { $WslUser } else { "default" }))
-Add-Content -Path $logPath -Value ("[{0}] Linux task log: {1}" -f $timestamp, $linuxLogPath)
+Add-Content -Path $logPath -Value ("[{0}] WSL output log: {1}" -f $timestamp, $logPath)
+Add-Content -Path $logPath -Value ("[{0}] Linux output GIF: {1}" -f $timestamp, $linuxOutputPath)
 
 try {
     & $wslExe @argumentList *>> $logPath

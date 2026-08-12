@@ -1,8 +1,9 @@
 param(
     [string]$TaskName = "CyberCube Spotify",
     [string]$TaskPath = "\Startup\",
-    [string]$LauncherPath = "C:\ProgramData\CyberCubeSpotify\Start-CyberCubeSpotify.ps1",
-    [string]$HiddenLauncherPath = "C:\ProgramData\CyberCubeSpotify\Start-CyberCubeSpotifyHidden.vbs",
+    [string]$TaskDataDir = "",
+    [string]$LauncherPath = "",
+    [string]$HiddenLauncherPath = "",
     [string]$LinuxProjectPath = "",
     [string]$WslDistro = "",
     [string]$WslUser = "",
@@ -19,6 +20,16 @@ $sourceLauncher = Join-Path $PSScriptRoot "Start-CyberCubeSpotify.ps1"
 $sourceHiddenLauncher = Join-Path $PSScriptRoot "Start-CyberCubeSpotifyHidden.vbs"
 $projectRoot = Split-Path -Parent $PSScriptRoot
 
+if (-not $TaskDataDir) {
+    $TaskDataDir = Join-Path $projectRoot ".task"
+}
+if (-not $LauncherPath) {
+    $LauncherPath = Join-Path $TaskDataDir "Start-CyberCubeSpotify.ps1"
+}
+if (-not $HiddenLauncherPath) {
+    $HiddenLauncherPath = Join-Path $TaskDataDir "Start-CyberCubeSpotifyHidden.vbs"
+}
+
 if (-not $LinuxProjectPath) {
     if ($projectRoot -match '^\\\\(?:wsl\.localhost|wsl\$)\\[^\\]+\\(.+)$') {
         $LinuxProjectPath = "/" + ($Matches[1] -replace '\\', '/')
@@ -34,7 +45,9 @@ if (-not $LinuxProjectPath) {
 }
 
 $targetDir = Split-Path -Parent $LauncherPath
+$hiddenTargetDir = Split-Path -Parent $HiddenLauncherPath
 New-Item -ItemType Directory -Force -Path $targetDir | Out-Null
+New-Item -ItemType Directory -Force -Path $hiddenTargetDir | Out-Null
 Copy-Item -Path $sourceLauncher -Destination $LauncherPath -Force
 Copy-Item -Path $sourceHiddenLauncher -Destination $HiddenLauncherPath -Force
 
@@ -49,6 +62,8 @@ $hiddenArgs = @(
     "`"$CubeIp`""
     "-Interval"
     $Interval.ToString()
+    "-LogDir"
+    "`"$TaskDataDir`""
     "-IdlePath"
     "`"$IdlePath`""
 )
@@ -86,6 +101,7 @@ Register-ScheduledTask `
     -Force | Out-Null
 
 Write-Host "Registered scheduled task: $TaskPath$TaskName"
+Write-Host "Task data directory: $TaskDataDir"
 Write-Host "Launcher copied to: $LauncherPath"
 Write-Host "Hidden launcher copied to: $HiddenLauncherPath"
 Write-Host "Linux project path: $LinuxProjectPath"
@@ -95,5 +111,5 @@ Write-Host "Idle path: $IdlePath"
 if ($WslDistro) { Write-Host "WSL distro: $WslDistro" }
 if ($WslUser) { Write-Host "WSL user: $WslUser" }
 if ($SpotifyTokenPath) { Write-Host "Spotify token path: $SpotifyTokenPath" }
-Write-Host "Log file: C:\ProgramData\CyberCubeSpotify\CyberCubeSpotifyWSL.log"
-Write-Host "Linux log file: /tmp/CyberCubeSpotifyWSL.log"
+Write-Host "Log file: $(Join-Path $TaskDataDir 'CyberCubeSpotifyWSL.log')"
+Write-Host "WSL output is captured in the Windows log file."
