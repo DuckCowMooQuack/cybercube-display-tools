@@ -16,5 +16,5 @@ bash -n start_cybercube_spotify.sh
 If you change the Windows startup scripts, also run:
 
 ```powershell
-powershell.exe -NoProfile -Command "$errors = $null; [System.Management.Automation.PSParser]::Tokenize((Get-Content -Raw 'windows/Register-CyberCubeSpotifyTask.ps1'), [ref]$errors) | Out-Null; if ($errors) { $errors; exit 1 }"
+powershell.exe -NoProfile -Command "$files = @('windows/Register-CyberCubeSpotifyTask.ps1', 'windows/Start-CyberCubeSpotify.ps1', 'windows/Activate-CyberCubeIdle.ps1', 'windows/Unregister-CyberCubeSpotifyTask.ps1'); foreach ($file in $files) { $errors = $null; [System.Management.Automation.PSParser]::Tokenize((Get-Content -Raw $file), [ref]$errors) | Out-Null; if ($errors) { $errors; exit 1 } }"
 ```

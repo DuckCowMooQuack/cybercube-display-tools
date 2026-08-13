@@ -62,13 +62,46 @@ Add-Content -Path $logPath -Value ("[{0}] WSL user: {1}" -f $timestamp, $(if ($W
 Add-Content -Path $logPath -Value ("[{0}] WSL output log: {1}" -f $timestamp, $logPath)
 Add-Content -Path $logPath -Value ("[{0}] Linux output GIF: {1}" -f $timestamp, $linuxOutputPath)
 
+$exitCode = 1
 try {
-    & $wslExe @argumentList *>> $logPath
-    $exitCode = $LASTEXITCODE
+    $previousErrorActionPreference = $ErrorActionPreference
+    $nativeErrorPreference = Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue
+    $previousNativeErrorPreference = if ($null -ne $nativeErrorPreference) { $nativeErrorPreference.Value } else { $null }
+
+    try {
+        $ErrorActionPreference = "Continue"
+        if ($null -ne $nativeErrorPreference) {
+            Set-Variable -Name PSNativeCommandUseErrorActionPreference -Value $false -Scope Local
+        }
+
+        & $wslExe @argumentList *>> $logPath
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+        if ($null -ne $nativeErrorPreference) {
+            Set-Variable -Name PSNativeCommandUseErrorActionPreference -Value $previousNativeErrorPreference -Scope Local
+        }
+    }
 }
 catch {
     Add-Content -Path $logPath -Value ("[{0}] Launcher error: {1}" -f (Get-Date -Format s), $_.Exception.Message)
     throw
+}
+finally {
+    $idleActivator = Join-Path $PSScriptRoot "Activate-CyberCubeIdle.ps1"
+    if (Test-Path $idleActivator) {
+        Add-Content -Path $logPath -Value ("[{0}] Running idle cleanup after WSL task exit" -f (Get-Date -Format s))
+        try {
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $idleActivator -CubeIp $CubeIp -IdlePath $IdlePath -LogDir $LogDir *>> $logPath
+        }
+        catch {
+            Add-Content -Path $logPath -Value ("[{0}] Idle cleanup error: {1}" -f (Get-Date -Format s), $_.Exception.Message)
+        }
+    }
+    else {
+        Add-Content -Path $logPath -Value ("[{0}] Idle cleanup skipped; activator not found: {1}" -f (Get-Date -Format s), $idleActivator)
+    }
 }
 
 Add-Content -Path $logPath -Value ("[{0}] CyberCube Spotify WSL task exited with code {1}" -f (Get-Date -Format s), $exitCode)

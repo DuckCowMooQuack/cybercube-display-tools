@@ -130,12 +130,7 @@ From Windows PowerShell:
 
 ```powershell
 cd C:\path\to\CyberCube\windows
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Register-CyberCubeSpotifyTask.ps1 `
-  -CubeIp "192.168.4.26" `
-  -WslDistro "Ubuntu-24.04" `
-  -WslUser "your-wsl-user" `
-  -SpotifyTokenPath "/home/your-wsl-user/.config/cybercube/spotify-token.json" `
-  -IdlePath "/image/Starfield_1.gif"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Register-CyberCubeSpotifyTask.ps1 -CubeIp "192.168.4.26" -WslDistro "Ubuntu-24.04" -WslUser "your-wsl-user" -SpotifyTokenPath "/home/your-wsl-user/.config/cybercube/spotify-token.json" -IdlePath "/image/Starfield_1.gif"
 ```
 
 Notes:
@@ -143,10 +138,12 @@ Notes:
 - `-WslDistro` and `-WslUser` are optional. If omitted, Windows uses your default WSL distro and user.
 - Use the exact distro name shown by `wsl.exe -l -v`; an in-place Ubuntu upgrade may leave the WSL name older than the Ubuntu release inside it.
 - The task is created at `Task Scheduler Library\Startup\CyberCube Spotify`.
+- A second task, `Task Scheduler Library\Startup\CyberCube Spotify Shutdown Idle`, activates the idle GIF when Windows logs a shutdown or restart request.
 - The registration script derives the Linux project path from the parent of the `windows` folder.
-- By default, copied task launchers and the Windows log are kept in the project-local `.task\` folder.
+- By default, Task Scheduler runs the source launchers in `windows\`; logs and generated runtime files are kept in the project-local `.task\` folder.
 - The WSL process writes the generated Spotify GIF to `.task/cybercube_spotify.gif` under the Linux project path.
 - Re-running the registration command updates the existing task.
+- Keep quoted path arguments on one physical PowerShell line. An embedded line break becomes part of the scheduled task argument.
 
 Start it immediately:
 
@@ -165,7 +162,9 @@ Check status and logs:
 
 ```powershell
 Get-ScheduledTask -TaskPath "\Startup\" -TaskName "CyberCube Spotify" | Get-ScheduledTaskInfo
+Get-ScheduledTask -TaskPath "\Startup\" -TaskName "CyberCube Spotify Shutdown Idle" | Get-ScheduledTaskInfo
 Get-Content ..\.task\CyberCubeSpotifyWSL.log -Tail 50
+Get-Content ..\.task\CyberCubeSpotifyShutdown.log -Tail 50
 ```
 
 Unregister the task:
@@ -196,16 +195,20 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Unregister-CyberCubeSp
 --idle-path    CyberCube image path to activate while Spotify is inactive
 --interval     Seconds between updates; 0 runs once
 --dry-run      Render locally without uploading
+--no-idle-on-exit
+              Do not activate the idle path when the polling loop exits
 ```
 
 ### Windows Task Registration
 
 ```text
 -TaskName            Scheduled task name
+-ShutdownTaskName    Shutdown/restart idle activation task name
 -TaskPath            Scheduled task folder, default \Startup\
--TaskDataDir         Project-local copied launchers and Windows log directory, default ..\.task
--LauncherPath        Installed PowerShell launcher path, default under -TaskDataDir
--HiddenLauncherPath  Installed VBScript hidden launcher path, default under -TaskDataDir
+-TaskDataDir         Project-local Windows log and runtime data directory, default ..\.task
+-LauncherPath        PowerShell launcher path, default .\Start-CyberCubeSpotify.ps1
+-HiddenLauncherPath  VBScript hidden launcher path, default .\Start-CyberCubeSpotifyHidden.vbs
+-IdleActivatorPath   PowerShell idle activator path, default .\Activate-CyberCubeIdle.ps1
 -LinuxProjectPath    Linux path to this project; auto-detected when possible
 -WslDistro           Optional WSL distro name
 -WslUser             Optional WSL user name
@@ -218,6 +221,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Unregister-CyberCubeSp
 ## Troubleshooting
 
 - If the CyberCube GIF restarts every second while Spotify is inactive, make sure you are running the latest script and that no old `cybercube_spotify.py` process is still running.
+- If shutdown cleanup does not run, re-run `Register-CyberCubeSpotifyTask.ps1`, confirm the `CyberCube Spotify Shutdown Idle` task exists, and check `.task\CyberCubeSpotifyShutdown.log`. The shutdown hook is best-effort because Windows gives user tasks only a short time before power-off.
 - If PowerShell blocks `.ps1` files, use `powershell.exe -NoProfile -ExecutionPolicy Bypass -File ...`.
 - If the task opens a console window, re-run the registration script so it installs the hidden `wscript.exe` launcher.
 - If Spotify never enters now-playing mode, confirm the token cache exists and contains `client_id` and `refresh_token`.

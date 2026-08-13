@@ -5,7 +5,9 @@ import argparse
 import io
 import json
 import os
+import signal
 import sys
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -29,6 +31,7 @@ WIDTH = 240
 HEIGHT = 240
 LANCZOS = getattr(getattr(Image, "Resampling", Image), "LANCZOS")
 ALBUM_ART_SIZE = 96
+STOP_REQUESTED = threading.Event()
 
 
 def http_json(url, method="GET", data=None, headers=None, timeout=15):
@@ -219,6 +222,56 @@ def is_active_path(status, path):
     return normalize_cube_path(active_path) == normalize_cube_path(path)
 
 
+def confirm_active_path(cube, path, attempts=5, delay=0.25):
+    last_status = None
+    for attempt in range(attempts):
+        try:
+            last_status = get_cube_status(cube)
+        except (OSError, TimeoutError, urllib.error.URLError):
+            if attempt == attempts - 1:
+                raise
+        else:
+            if is_active_path(last_status, path):
+                return last_status
+        if attempt < attempts - 1:
+            time.sleep(delay)
+    return last_status
+
+
+def activate_idle(args, previous_mode=None, reason="Spotify not actively playing"):
+    if args.dry_run:
+        if previous_mode == "starfield":
+            print("mode: Starfield already active (%s)" % reason)
+        else:
+            print("mode: Starfield (%s)" % reason)
+        return "starfield"
+
+    try:
+        status = get_cube_status(args.cube)
+        if is_active_path(status, args.idle_path):
+            if previous_mode == "starfield":
+                print("mode: Starfield already active (%s)" % reason)
+            else:
+                print("mode: Starfield (%s)" % reason)
+            print("active path: %s" % status.get("album", {}).get("activePath"))
+            return "starfield"
+    except (OSError, TimeoutError, urllib.error.URLError):
+        status = None
+
+    print("mode: Starfield (%s)" % reason)
+
+    activate = activate_file(args.cube, args.idle_path)
+    try:
+        status = confirm_active_path(args.cube, args.idle_path)
+    except (OSError, TimeoutError, urllib.error.URLError):
+        status = {"album": {"activePath": args.idle_path}, "status_warning": "Could not confirm final status."}
+    if status is None:
+        status = {"album": {"activePath": args.idle_path}, "status_warning": "Could not confirm final status."}
+    print("activate ok: %s" % activate.get("ok"))
+    print("active path: %s" % status.get("album", {}).get("activePath"))
+    return "starfield"
+
+
 def run_once(args, previous_mode=None):
     playback = render_spotify(args.token_path, args.output)
     if playback and playback.get("item"):
@@ -236,32 +289,19 @@ def run_once(args, previous_mode=None):
         print("active path: %s" % status.get("album", {}).get("activePath"))
         return "spotify"
     else:
-        if previous_mode == "starfield":
-            print("mode: Starfield already active (Spotify not actively playing)")
-            return "starfield"
+        return activate_idle(args, previous_mode=previous_mode)
 
-        print("mode: Starfield (Spotify not actively playing)")
 
-        if args.dry_run:
-            return "starfield"
+def request_stop(signum, _frame):
+    print("shutdown requested: received signal %s" % signum, file=sys.stderr)
+    STOP_REQUESTED.set()
 
-        try:
-            status = get_cube_status(args.cube)
-            if is_active_path(status, args.idle_path):
-                print("active path: %s" % status.get("album", {}).get("activePath"))
-                return "starfield"
-        except (OSError, TimeoutError, urllib.error.URLError):
-            status = None
 
-        activate = activate_file(args.cube, args.idle_path)
-        if status is None:
-            try:
-                status = get_cube_status(args.cube)
-            except (OSError, TimeoutError, urllib.error.URLError):
-                status = {"album": {"activePath": args.idle_path}, "status_warning": "Could not confirm final status."}
-        print("activate ok: %s" % activate.get("ok"))
-        print("active path: %s" % status.get("album", {}).get("activePath"))
-        return "starfield"
+def install_signal_handlers():
+    for signal_name in ("SIGINT", "SIGTERM", "SIGHUP"):
+        signum = getattr(signal, signal_name, None)
+        if signum is not None:
+            signal.signal(signum, request_stop)
 
 
 def parse_args():
@@ -272,6 +312,7 @@ def parse_args():
     parser.add_argument("--idle-path", default=DEFAULT_IDLE_PATH, help="CyberCube image path to activate when Spotify is not playing")
     parser.add_argument("--interval", type=int, default=0, help="seconds between updates; 0 runs once")
     parser.add_argument("--dry-run", action="store_true", help="render only; do not upload")
+    parser.add_argument("--no-idle-on-exit", action="store_true", help="do not activate the idle path when the loop exits")
     return parser.parse_args()
 
 
@@ -281,15 +322,25 @@ def main():
         run_once(args)
         return
 
+    install_signal_handlers()
     mode = None
-    while True:
-        started = time.time()
-        try:
-            mode = run_once(args, previous_mode=mode)
-        except (urllib.error.URLError, TimeoutError, OSError, ValueError) as error:
-            print("update failed: %s" % error, file=sys.stderr)
-        delay = max(1, args.interval - int(time.time() - started))
-        time.sleep(delay)
+    try:
+        while not STOP_REQUESTED.is_set():
+            started = time.time()
+            try:
+                mode = run_once(args, previous_mode=mode)
+            except (urllib.error.URLError, TimeoutError, OSError, ValueError) as error:
+                print("update failed: %s" % error, file=sys.stderr)
+            delay = max(1, args.interval - int(time.time() - started))
+            STOP_REQUESTED.wait(delay)
+    except KeyboardInterrupt:
+        STOP_REQUESTED.set()
+    finally:
+        if not args.no_idle_on_exit:
+            try:
+                activate_idle(args, previous_mode=mode, reason="process exiting")
+            except (urllib.error.URLError, TimeoutError, OSError, ValueError) as error:
+                print("exit cleanup failed: %s" % error, file=sys.stderr)
 
 
 if __name__ == "__main__":
